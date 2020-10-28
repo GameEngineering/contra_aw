@@ -1,0 +1,8 @@
+Contra 3 1st Level Requirements: 
+
+- Finish player animations/states
+- Player movement
+- Scene/Level construction and serialization
+- Simple level editor
+- Enemies
+- Entity/Component system? Nah...

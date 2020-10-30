@@ -15,6 +15,7 @@ inc=(
 	-I ../source/
 	-I ../third_party/include/
 	-I ../third_party/include/gs/
+	-I ../include/
 )
 
 # Source files
@@ -41,7 +42,7 @@ libs=(
 )
 
 # Build
-g++ -O3 ${lib_dirs[*]} ${libs[*]} ${fworks[*]} ${inc[*]} ${src[*]} ${flags[*]} -o ImGui
+g++ -O3 ${lib_dirs[*]} ${libs[*]} ${fworks[*]} ${inc[*]} ${src[*]} ${flags[*]} -o Contra3
 
 cd ..
 

@@ -7,21 +7,25 @@ cd bin
 proj_root_dir=$(pwd)/../
 
 flags=(
-	-std=gnu99 -Wl,--no-as-needed -ldl -lGL -lX11 -pthread -lXi
+	-std=c++11 -Wl,--no-as-needed -ldl -lGL -lX11 -pthread -lXi
 )
 
 # Include directories
 inc=(
-	-I ../../../include/		# Gunslinger includes
+	-I ../source/
+	-I ../third_party/include/
+	-I ../third_party/include/gs/
+	-I ../include/
 )
 
 # Source files
 src=(
-	../source/main.c
+	../source/main.cpp
+	../source/imgui/*.cpp
 )
 
 lib_dirs=(
-	-L ../../../bin/
+	-L ../third_party/lib/linux/
 )
 
 fworks=(
@@ -32,7 +36,7 @@ libs=(
 )
 
 # Build
-g++ -O3 ${fworks[*]} ${inc[*]} ${src[*]} ${flags[*]} ${lib_dirs[*]} ${libs[*]} -lm -o HelloCPP
+g++ -O3 ${fworks[*]} ${inc[*]} ${src[*]} ${flags[*]} ${lib_dirs[*]} ${libs[*]} -lm -o Contra3
 
 cd ..
 

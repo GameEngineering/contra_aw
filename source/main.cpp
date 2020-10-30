@@ -3,8 +3,10 @@
 #include <imgui/imgui_impl_opengl3.h>
 #include <GLFW/glfw3.h>
 
-// Useful Defines
+// Project Includes
+#include "asset_manager.h"
 
+// Useful Defines
 #define use_animation_time 	true
 
 gs_vec4 __gs_vec4_new( f32 x, f32 y, f32 z, f32 w )
@@ -43,75 +45,8 @@ gs_vec2 __gs_vec2_new( f32 x, f32 y )
 #define v2( x, y )\
 	__gs_vec2_new( x, y )
 
-
-// Declare hash table for texture type
-gs_hash_table_decl( u64, gs_texture_t, gs_hash_u64, gs_hash_key_comp_std_type );
-gs_slot_array_decl( gs_texture_t );
-gs_slot_map_decl( u64, gs_texture_t );
-
 #define sprite_col_span 8.f
 #define sprite_row_span 8.f
-
-typedef struct asset_manager_t
-{
-	gs_slot_map( u64, gs_texture_t ) textures;
-} asset_manager_t;
-
-asset_manager_t asset_manager_new()
-{
-	asset_manager_t am = gs_default_val();
-	am.textures = gs_slot_map_new( u64, gs_texture_t );
-	return am;
-}
-
-void get_qualified_asset_name( char* buffer, usize sz, const char* file_path )
-{
-	char tmp[1024] = {0};
-
-	// Lower case
-	gs_util_str_to_lower(file_path, buffer, sz);
-
-	// Replace '/' with '.'
-	gs_util_string_replace(buffer, tmp, sz, '/', '.' );
-	memset( buffer, 0, sz );
-
-	// Remove first 9 characters
-	gs_util_string_substring(tmp, buffer, sz, 9, gs_string_length(tmp) );
-	memset(tmp, 0, 1024);
-
-	// Strip out file extension (assuming .png for now), so remove last 4 characters
-	gs_util_string_substring(buffer, tmp, sz, 0, gs_string_length(buffer) - 4);
-	memset(buffer, 0, sz);
-	memcpy(buffer, tmp, gs_string_length(tmp));
-}
-
-void __asset_manager_load_gs_texture_t( asset_manager_t* am, const char* file_path, gs_texture_parameter_desc desc )
-{
-	char buffer[256] = {0};
-
-	// Need to qualify the asset name
-	get_qualified_asset_name( buffer, 256, file_path );
-
-	gs_graphics_i* gfx = gs_engine_instance()->ctx.graphics;
-
-	// Load texture
-	gs_texture_t tex = gfx->construct_texture_from_file( file_path, &desc );
-
-	// Place texture into asset manager
-	gs_slot_map_insert( am->textures, gs_hash_str_64(buffer), tex );
-}
-
-gs_texture_t __asset_manager_get_gs_texture_t( asset_manager_t* am, const char* _id )
-{
-	u64 id = gs_hash_str_64( _id );
-	return gs_slot_map_get( am->textures, id );
-}
-
-#define asset_manager_load( am, T, file_path, ... )\
-	__asset_manager_load_##T( &(am), file_path, __VA_ARGS__ )
-
-#define asset_manager_get( am, T, id )\
-	__asset_manager_get_##T( &(am), id )
 
 typedef struct sprite_frame_t
 {
@@ -153,6 +88,64 @@ sprite_frame_t sprite_frame_t_new( gs_texture_t tex, gs_vec4 uv )
 
 #define player_set_state( player, lower, upper, gun )\
 	(player).state = player_state( lower, upper, gun )	
+
+gs_vec4 player_get_window_bounds( player_t* player, gs_camera_t* camera )
+{
+	gs_platform_i* platform = gs_engine_instance()->ctx.platform;
+	gs_vec2 ws = platform->window_size( platform->main_window() );
+
+	sprite_frame_animation_t* anim = &player->animations[player->state];
+	u32 anim_frame_count = gs_dyn_array_size( anim->frames );
+	sprite_frame_t* s = &anim->frames[anim->current_frame];
+	gs_vec4 uvs = s->uvs;
+
+	// Width and height of UVs to scale the quads
+	f32 tw = fabsf(uvs.z - uvs.x);
+	f32 th = fabsf(uvs.w - uvs.y);
+
+	// Player's transform
+	gs_vqs xform = gs_vqs_default();
+	xform.position = v3(0.f, 0.f, 0.f);
+	xform.scale = gs_vec3_scale(v3(tw, th, 1.f), player->scale_factor);
+	xform.scale.z = 1.f;
+
+	// AABB of the player
+	gs_vec4 bounds = gs_default_val();
+
+	// Define the object space quad for our player
+	gs_vec4 tl = v4(-0.5f, -0.5f, 0.f, 1.f);
+	gs_vec4 br = v4(0.5f, 0.5f, 0.f, 1.f);
+
+	// Define matrices for transformations
+	gs_mat4 model_mtx = gs_vqs_to_mat4( &xform );
+	gs_mat4 view_mtx = gs_camera_get_view( camera );
+	gs_mat4 proj_mtx = gs_camera_get_projection( camera, ws.x, ws.y );
+	gs_mat4 mvp = gs_mat4_mul( proj_mtx, gs_mat4_mul( view_mtx, model_mtx ) );
+
+	// Transform verts
+	tl = gs_mat4_mul_vec4( mvp, tl );			
+	br = gs_mat4_mul_vec4( mvp, br );
+
+	// Perspective divide	
+	tl = gs_vec4_scale( tl, 1.f / tl.w );
+	br = gs_vec4_scale( br, 1.f / br.w );
+
+	// NDC [0.f, 1.f] and NDC
+	tl.x = (tl.x * 0.5f + 0.5f);
+	tl.y = (tl.y * 0.5f + 0.5f);
+	br.x = (br.x * 0.5f + 0.5f);
+	br.y = (br.y * 0.5f + 0.5f);
+
+	// Window Space
+	tl.x = tl.x * ws.x;
+	tl.y = gs_map_range( 1.f, 0.f, 0.f, 1.f, tl.y ) * ws.y;
+	br.x = br.x * ws.x;
+	br.y = gs_map_range( 1.f, 0.f, 0.f, 1.f, br.y ) * ws.y;
+
+	bounds = v4(tl.x, tl.y, br.x, br.y);
+
+	return bounds;
+}
 
 void player_init( player_t* player, asset_manager_t* am )
 {
@@ -206,8 +199,11 @@ void update_camera();
 _global gs_camera_t 			g_camera = gs_default_val();
 _global gs_quad_batch_t 		g_player_batch = gs_default_val();
 _global gs_command_buffer_t 	g_cb = gs_default_val();
-
+_global gs_frame_buffer_t 		g_fb = gs_default_val();
+_global gs_texture_t 			g_rt = gs_default_val();
+_global asset_manager_t 		g_am = gs_default_val();
 _global player_t 				g_player = gs_default_val();
+_global b8 						g_show_demo_window = true;
 
 // Forward Decls.
 gs_result app_init();
@@ -217,13 +213,6 @@ void imgui_init();
 void imgui_new_frame();
 void imgui_render();
 void do_ui();
-
-// Resource handles for internal audio data. Since audio must run on a separate thread, this is necessary.
-gs_texture_t g_texture = {0};
-asset_manager_t g_am = {0};
-
-// Globals
-b8 g_show_demo_window = true;
 
 int main( int argc, char** argv )
 {
@@ -259,9 +248,26 @@ gs_result app_init()
 	// Cache apis
 	gs_platform_i* platform = gs_engine_instance()->ctx.platform;
 	gs_graphics_i* gfx = gs_engine_instance()->ctx.graphics;
+	gs_vec2 fbs = platform->frame_buffer_size( platform->main_window() );
 
 	// Construct command buffer for grahics ops
 	g_cb = gs_command_buffer_new();
+
+	gs_texture_parameter_desc t_desc = gs_texture_parameter_desc_default();
+	t_desc.texture_format = gs_texture_format_rgba8;
+	t_desc.mag_filter = gs_nearest;
+	t_desc.min_filter = gs_nearest;
+	t_desc.generate_mips = false;
+	t_desc.width = fbs.x;
+	t_desc.height = fbs.y;
+	t_desc.num_comps = 4;
+	t_desc.data = NULL;
+
+	// Construct render target
+	g_rt = gfx->construct_texture( t_desc );
+
+	// Construct frame buffer
+	g_fb = gfx->construct_frame_buffer( g_rt );
 
 	// Construct asset manager
 	g_am = asset_manager_new();
@@ -321,15 +327,6 @@ gs_result app_update()
 	player_update_input( &g_player );
 
 	static s32 cur_frame = 0;
-	if ( platform->key_pressed( gs_keycode_left ) )
-	{
-		cur_frame--;
-	}
-	if ( platform->key_pressed( gs_keycode_right ) )
-	{
-		cur_frame++;
-	}
-
 	#if use_animation_time
 			static f32 _t = 0.f;
 			_t += 0.1f;
@@ -378,29 +375,36 @@ gs_result app_update()
 	// Render scene
 	================*/
 
-	// Main window size
-	gs_vec2 ws = platform->window_size( platform->main_window() );
-	gs_vec2 fbs = platform->frame_buffer_size( platform->main_window() );
+	gfx->bind_frame_buffer( cb, g_fb );
+	{
+		// Set the render target for the frame buffer
+		gfx->set_frame_buffer_attachment( cb, g_rt, 0 );
 
-	// Set clear color and clear screen
-	f32 clear_color[4] = { 0.2f, 0.2f, 0.2f, 1.f };
-	gfx->set_view_clear( cb, clear_color );
-	gfx->set_view_port( cb, fbs.x, fbs.y );
-	gfx->set_depth_enabled( cb, false );
-	gfx->set_blend_mode( cb, gs_blend_mode_src_alpha, gs_blend_mode_one_minus_src_alpha );
+		// Main window size
+		gs_vec2 ws = platform->window_size( platform->main_window() );
+		gs_vec2 fbs = platform->frame_buffer_size( platform->main_window() );
 
-	// Create model/view/projection matrices from camera
-	gs_mat4 view_mtx = gs_camera_get_view( &g_camera );
-	gs_mat4 proj_mtx = gs_camera_get_projection( &g_camera, ws.x, ws.y );
-	gs_mat4 model_mtx = gs_mat4_scale(v3(1.f, 1.f, 1.f));
+		// Set clear color and clear screen
+		f32 clear_color[4] = { 0.2f, 0.2f, 0.2f, 1.f };
+		gfx->set_view_clear( cb, clear_color );
+		gfx->set_view_port( cb, fbs.x, fbs.y );
+		gfx->set_depth_enabled( cb, false );
+		gfx->set_blend_mode( cb, gs_blend_mode_src_alpha, gs_blend_mode_one_minus_src_alpha );
 
-	// Set necessary dynamic uniforms for quad batch material (defined in default shader in gs_quad_batch.h)
-	gfx->set_material_uniform_mat4( qb->material, "u_model", model_mtx );
-	gfx->set_material_uniform_mat4( qb->material, "u_view", view_mtx );
-	gfx->set_material_uniform_mat4( qb->material, "u_proj", proj_mtx );
+		// Create model/view/projection matrices from camera
+		gs_mat4 view_mtx = gs_camera_get_view( &g_camera );
+		gs_mat4 proj_mtx = gs_camera_get_projection( &g_camera, ws.x, ws.y );
+		gs_mat4 model_mtx = gs_mat4_scale(v3(1.f, 1.f, 1.f));
 
-	// Need to submit quad batch
-	gfx->quad_batch_submit( cb, qb );
+		// Set necessary dynamic uniforms for quad batch material (defined in default shader in gs_quad_batch.h)
+		gfx->set_material_uniform_mat4( qb->material, "u_model", model_mtx );
+		gfx->set_material_uniform_mat4( qb->material, "u_view", view_mtx );
+		gfx->set_material_uniform_mat4( qb->material, "u_proj", proj_mtx );
+
+		// Need to submit quad batch
+		gfx->quad_batch_submit( cb, qb );
+	}
+	gfx->unbind_frame_buffer( cb );
 
 	// Submit command buffer for rendering
 	gfx->submit_command_buffer( cb );
@@ -408,16 +412,11 @@ gs_result app_update()
 	// Might render entire scene into imgui texture then display that as "backbuffer"
 
 	// ImGui editor
-	/*
 	imgui_new_frame();
-
-    // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-    // ImGui::ShowDemoWindow(&g_show_demo_window);
-  	do_ui();
-
-    // Draw all imgui data
+	{
+	  	do_ui();
+	}
     imgui_render();
-    */
 
 	// Otherwise, continue
 	return gs_result_in_progress;
@@ -467,26 +466,33 @@ void imgui_render()
 
 void do_ui()
 {
-	static u32 img = 0;
 	gs_platform_i* platform = gs_engine_instance()->ctx.platform;
 
-	if ( platform->key_pressed( gs_keycode_c ) )
-	{
-		img = 0;
-	}
+	ImDrawList* dl = ImGui::GetBackgroundDrawList();
+	dl->AddImage(
+		(ImTextureID)gs_int_to_void_p(g_rt.id),
+		ImVec2(0.f, 0.f),
+		ImVec2(g_rt.width, g_rt.height),
+		ImVec2(0.f, 1.f),
+		ImVec2(1.f, 0.f)
+	);
 
-	if ( platform->key_pressed( gs_keycode_s ) )
-	{
-		img = 1;
-	}
+	// Grab player window bounds
+	gs_vec4 pb = player_get_window_bounds( &g_player, &g_camera );
+	
+	// Draw bounding rect around player
+	dl->AddRect(
+		ImVec2(pb.x, pb.w),
+		ImVec2(pb.z, pb.y),
+		ImColor(1.f, 1.f, 1.f, 1.f),
+		1.f
+	);
 
-	ImGui::Begin("Image Viewer");
+	ImGui::Begin( "Window" );
 	{
-		u64 id = img ? gs_hash_str_64( "contra_player_sprite" ) : gs_hash_str_64( "coffee" );
-		gs_texture_t tex = gs_slot_map_get( g_am.textures, id );
-
-	    ImGui::Image((ImTextureID)gs_int_to_void_p(tex.id), ImVec2(tex.width, tex.height), 
-	    	ImVec2(0.f, 1.f), ImVec2(1.f, 0.f));
+		f32 ortho_scale = g_camera.ortho_scale;		
+	    ImGui::SliderFloat("Camera Ortho Scale", &g_camera.ortho_scale, 0.01f, 10.f, "%.2f");
+		ImGui::Text( "Test" );
 	}
 	ImGui::End();
 }
@@ -514,7 +520,6 @@ void update_camera()
 		g_camera.transform.position.y -= 0.1f;
 	}
 }
-
 
 
 

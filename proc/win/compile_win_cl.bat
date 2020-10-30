@@ -7,7 +7,7 @@ rem Name
 set name=Contra
 
 rem Include directories 
-set inc=/I ..\..\..\include\ /I ..\third_party\include\ /I ..\third_party\include\gs\ /I ..\source\
+set inc=/I ..\..\..\include\ /I ..\third_party\include\ /I ..\third_party\include\gs\ /I ..\source\ /I ..\include\
 
 rem Source files
 set src_main=..\source\*.cpp ..\source\imgui\*.cpp

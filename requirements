@@ -6,3 +6,6 @@ Contra 3 1st Level Requirements:
 - Simple level editor
 - Enemies
 - Entity/Component system? Nah...
+
+- render into backbuffer
+- bounding area for player drawn (debug view)

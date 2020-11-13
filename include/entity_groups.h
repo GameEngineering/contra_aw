@@ -30,6 +30,13 @@ typedef struct sprite_component_t
 	gs_vec4 uv;
 } sprite_component_t;
 
+typedef struct sprite_animation_component_t
+{
+	_base( component_t );
+	sprite_frame_animation_asset_t* animation;
+	u32 current_frame;
+} sprite_animation_component_t;
+
 gs_slot_array_decl( transform_component_t );
 gs_slot_array_decl( sprite_component_t );
 gs_slot_array_decl( rigid_body_component_t );

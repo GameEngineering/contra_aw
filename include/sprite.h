@@ -25,4 +25,12 @@ sprite_frame_t sprite_frame_t_new( gs_texture_t tex, gs_vec4 uv )
 	return frame;
 }
 
+// Define an asset type for animations to be used by multiple different entities
+
+typedef struct sprite_frame_animation_asset_t
+{
+	gs_dyn_array( sprite_frame_t ) frames;
+	f32 speed;
+} sprite_frame_animation_asset_t;
+
 #endif

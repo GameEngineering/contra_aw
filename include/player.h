@@ -7,6 +7,7 @@
 #include "asset_manager.h"
 #include "sprite.h"
 #include "aabb.h"
+#include "entity_groups.h"
 
 // Forward Decls.
 struct asset_manager_t;
@@ -29,6 +30,10 @@ typedef enum player_state_t
 
 typedef struct player_t
 {
+	transform_component_t 			xform_comp;
+	rigid_body_component_t 			rigid_body_comp;
+	sprite_animation_component_t 	animation_comp;
+
 	gs_vqs transform;
 	gs_vec2 velocity;
 	aabb_t aabb;
@@ -39,11 +44,15 @@ typedef struct player_t
 } player_t;
 
 #define player_set_state( player, lower, upper, gun )\
-	(player).state = player_state( lower, upper, gun )
+do {\
+	(player).state = player_state( lower, upper, gun );\
+	(player).animation_comp.current_frame = 0;\
+} while (0)
+
 
 b32 player_is_grounded( player_t* player );
 b32 player_is_moving( player_t* player );
-const char* player_state_to_string( player_t* player );
+const char* player_state_to_string( player_state_t state );
 void player_init( player_t* player, asset_manager_t* am );
 gs_vec2 player_get_bullet_velocity( player_t* player );
 gs_vec2 player_get_bullet_offset( player_t* player );

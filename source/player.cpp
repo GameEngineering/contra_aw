@@ -12,9 +12,9 @@ b32 player_is_moving( player_t* player )
 	return (player->velocity.x != 0.f );
 }
 
-const char* player_state_to_string( player_t* player )
+const char* player_state_to_string( player_state_t state )
 {
-	switch ( player->state )
+	switch ( state )
 	{
 		case player_state(running, gun_forward, not_firing): 	return "player_state_running_gun_forward_not_firing"; break;
 		case player_state(running, gun_down, not_firing): 		return "player_state_running_gun_down_not_firing"; break;
@@ -42,65 +42,8 @@ void player_init( player_t* player, asset_manager_t* am )
 	gs_texture_t tex = asset_manager_get( *am, gs_texture_t, "contra_player_sprite" );
 	sprite_frame_animation_t* anim = NULL;
 
-	/* Player State: Running, Gun Forward, Not Firing */
-	anim = &player->animations[ player_state(running, gun_forward, not_firing) ];
-	anim->frames = gs_dyn_array_new( sprite_frame_t );
-	anim->speed = 0.1f;
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(113.f, 81.f, 146.f, 120.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(148.f, 81.f, 185.f, 120.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(2.f, 81.f, 37.f, 120.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(43.f, 82.f, 72.f, 120.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(75.f, 81.f, 111.f, 120.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(189.f, 82.f, 228.f, 120.f) ) );
-
-	/* Player State: Running, Gun Up, Not Firing */
-	anim = &player->animations[ player_state(running, gun_up, not_firing) ];
-	anim->frames = gs_dyn_array_new( sprite_frame_t );
-	anim->speed = 0.1f;
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(103.f, 172.f, 126.f, 222.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(129.f, 172.f, 156.f, 222.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(8.f, 172.f, 35.f, 222.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(42.f, 171.f, 65.f, 222.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(70.f, 171.f, 97.f, 222.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(6.f, 226.f, 44.f, 277.f) ) );
-
-	/* Player State: Running, Gun Down, Not Firing */
-	anim = &player->animations[ player_state(running, gun_down, not_firing) ];
-	anim->frames = gs_dyn_array_new( sprite_frame_t );
-	anim->speed = 0.1f;
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(120.f, 280.f, 146.f, 321.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(155.f, 280.f, 182.f, 321.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(46.f, 230.f, 74.f, 271.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(82.f, 230.f, 107.f, 271.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(113.f, 230.f, 140.f, 272.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(184.f, 280.f, 220.f, 322.f) ) );
-
-	/* Player State: Idle, Gun Forward, Not Firing */
-	anim = &player->animations[ player_state(idle, gun_forward, not_firing) ];
-	anim->frames = gs_dyn_array_new( sprite_frame_t );
-	anim->speed = 0.1f;
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(35.f, 2.f, 70.f, 43.f) ) );
-
-	/* Player State: Idle, Gun Up, Not Firing */
-	anim = &player->animations[ player_state(idle, gun_up, not_firing) ];
-	anim->frames = gs_dyn_array_new( sprite_frame_t );
-	anim->speed = 0.1f;
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(167.f, 169.f, 198.f, 238.f) ) );
-
-	/* Player State: Idle Prone, Gun Forward, Not Firing */
-	anim = &player->animations[ player_state(idle_prone, gun_forward, not_firing) ];
-	anim->frames = gs_dyn_array_new( sprite_frame_t );
-	anim->speed = 0.1f;
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(114.f, 26.f, 158.f, 41.f) ) );
-
-	/* Player State: Jumping, Null, Null */
-	anim = &player->animations[ player_state(jumping, null, null) ];
-	anim->frames = gs_dyn_array_new( sprite_frame_t );
-	anim->speed = 0.8f;
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(0.f, 49.f, 25.f, 72.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(30.f, 49.f, 49.f, 72.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(59.f, 49.f, 82.f, 72.f) ) );
-	gs_dyn_array_push( anim->frames, sprite_frame_t_new( tex, v4(93.f, 49.f, 112.f, 72.f) ) );
+	// Animation Component
+	player->animation_comp.animation = asset_manager_get( *am, sprite_frame_animation_asset_t, player_state_to_string(player->state) ); 
 }
 
 gs_vec2 player_get_bullet_velocity( player_t* player )
@@ -138,9 +81,10 @@ gs_vec2 player_get_bullet_offset( player_t* player )
 void player_update_aabb( player_t* player )
 {
 	f32 t = gs_engine_instance()->ctx.platform->elapsed_time();
-	sprite_frame_animation_t* anim = &player->animations[player->state];
+	sprite_animation_component_t* ac = &player->animation_comp;
+	sprite_frame_animation_asset_t* anim = ac->animation;
 	u32 anim_frame_count = gs_dyn_array_size( anim->frames );
-	sprite_frame_t* s = &anim->frames[anim->current_frame];
+	sprite_frame_t* s = &anim->frames[ac->current_frame];
 	gs_vec4 uvs = s->uvs;
 
 	// Width and height of UVs to scale the quads
@@ -321,4 +265,23 @@ void player_update( player_t* player, game_context_t* ctx )
 	{
 		firing = false;
 	}
+
+	// Set animation based on player state
+	player->animation_comp.animation = asset_manager_get( ctx->am, sprite_frame_animation_asset_t, player_state_to_string(player->state) );
+
+	// Tick animation based on state
+	static s32 cur_frame = 0;
+	static f32 _t = 0.f;
+	sprite_animation_component_t* ac = &player->animation_comp;
+	sprite_frame_animation_asset_t* anim = ac->animation;
+	u32 anim_frame_count = gs_dyn_array_size( anim->frames );
+	_t += ac->animation->speed;
+	if ( _t >= 1.f )
+	{
+		_t = 0.f;
+		cur_frame++;
+	}
+	
+	// Render player animation
+	ac->current_frame = cur_frame % anim_frame_count;
 }

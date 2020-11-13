@@ -26,19 +26,11 @@ typedef struct game_context_t
 	asset_manager_t 		am;
 	b8 						show_debug_window;
 	gs_dyn_array( aabb_t )  collision_objects;
+	gs_handle_audio_instance bg_music;
 } game_context_t;
 
-_force_inline
-void game_context_init( game_context_t* ctx )
-{
-	// Initialize bullet group
-	entity_group_init( bullet_t, &ctx->entities.bullets );
-}
-
-_force_inline
-void game_context_update( game_context_t* ctx )
-{
-	entity_group_update( bullet_t, &ctx->entities.bullets );	
-}
+void game_context_init( game_context_t* ctx );
+void game_context_initialize_assets( game_context_t* ctx );
+void game_context_update( game_context_t* ctx );
 
 #endif

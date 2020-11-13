@@ -59,78 +59,11 @@ int main( int argc, char** argv )
 
 gs_result app_init()
 {
-	// Cache apis
-	gs_platform_i* platform = gs_engine_instance()->ctx.platform;
-	gs_graphics_i* gfx = gs_engine_instance()->ctx.graphics;
-	gs_vec2 fbs = platform->frame_buffer_size( platform->main_window() );
-
-	// Construct command buffer for grahics ops
-	g_ctx.cb = gs_command_buffer_new();
-
-	gs_texture_parameter_desc t_desc = gs_texture_parameter_desc_default();
-	t_desc.texture_format = gs_texture_format_rgba8;
-	t_desc.mag_filter = gs_nearest;
-	t_desc.min_filter = gs_nearest;
-	t_desc.generate_mips = false;
-	t_desc.width = fbs.x;
-	t_desc.height = fbs.y;
-	t_desc.num_comps = 4;
-	t_desc.data = NULL;
-
-	// Construct render target
-	g_ctx.rt = gfx->construct_texture( t_desc );
-
-	// Construct frame buffer
-	g_ctx.fb = gfx->construct_frame_buffer( g_ctx.rt );
-
-	// Construct asset manager
-	g_ctx.am = asset_manager_new();
-
-	gs_texture_parameter_desc desc = gs_texture_parameter_desc_default();
-	desc.min_filter = gs_nearest;
-	desc.mag_filter = gs_nearest;
-	desc.generate_mips = false;
-
-	// Place them assets
-	asset_manager_load( g_ctx.am, gs_texture_t, "./assets/contra_player_sprite.png", desc );
-	asset_manager_load( g_ctx.am, gs_texture_t, "./assets/bg_elements.png", desc );
-
-	// Construct quad batch api and link up function pointers
-	g_ctx.player_batch = gs_quad_batch_new( NULL );
-	g_ctx.background_batch = gs_quad_batch_new( NULL );
-
-	// Set material texture uniform
-	gfx->set_material_uniform_sampler2d( g_ctx.player_batch.material, "u_tex", 
-		asset_manager_get( g_ctx.am, gs_texture_t, "contra_player_sprite" ), 0 );
-
-	gfx->set_material_uniform_sampler2d( g_ctx.background_batch.material, "u_tex", 
-		asset_manager_get( g_ctx.am, gs_texture_t, "bg_elements" ), 0 );
-
-	// Construct camera parameters
-	g_ctx.camera.transform = gs_vqs_default();
-	g_ctx.camera.transform.position = v3(0.f, 3.1f, -1.f);
-	g_ctx.camera.fov = 60.f;
-	g_ctx.camera.near_plane = 0.1f;
-	g_ctx.camera.far_plane = 1000.f;
-	g_ctx.camera.ortho_scale = 3.7f;
-	g_ctx.camera.proj_type = gs_projection_type_orthographic;
-
-	// Intialize player
-	player_init( &g_ctx.player, &g_ctx.am);
-
-	imgui_init();
-
-	// Init aabb collision struct
-	g_ctx.collision_objects = gs_dyn_array_new( aabb_t );
-	gs_for_range_i( 100 )
-	{
-		aabb_t aabb = gs_default_val();
-		aabb.min = v2((f32)i * 5.f, 0.f);
-		aabb.max = gs_vec2_add(aabb.min, v2(1.f, 1.f));
-		gs_dyn_array_push( g_ctx.collision_objects, aabb );
-	}
-
+	// Initialize the game context
 	game_context_init( &g_ctx );
+
+	// Initialize debug ui
+	imgui_init();
 
 	return gs_result_success;
 }
@@ -165,29 +98,16 @@ gs_result app_update()
 	// Update game context
 	game_context_update( &g_ctx );
 
-	static s32 cur_frame = 0;
-	#if use_animation_time
-			static f32 _t = 0.f;
-			_t += g_ctx.player.animations[g_ctx.player.state].speed;
-			if ( _t >= 1.f )
-			{
-				_t = 0.f;
-				cur_frame++;
-			}
-	#endif
-
 	f32 scale_factor = gs_vec3_len( g_ctx.player.transform.scale );
 
 	// Player
 	gfx->quad_batch_begin( qb );
 	{
-		sprite_frame_animation_t* anim = &g_ctx.player.animations[g_ctx.player.state];
+		sprite_animation_component_t* ac = &g_ctx.player.animation_comp; 
+		sprite_frame_animation_asset_t* anim = ac->animation;
 		u32 anim_frame_count = gs_dyn_array_size( anim->frames );
 
-		// Render player animation
-		anim->current_frame = cur_frame % anim_frame_count;
-
-		sprite_frame_t* s = &anim->frames[anim->current_frame];
+		sprite_frame_t* s = &anim->frames[ac->current_frame];
 		f32 w = (f32)s->texture.width;
 		f32 h = (f32)s->texture.height;
 		gs_vec4 uvs = s->uvs;
@@ -216,7 +136,7 @@ gs_result app_update()
 	gfx->quad_batch_begin( qb );
 	{
 		// Loop through tiled backgrounds
-		gs_texture_t bg_tex = asset_manager_get( g_ctx.am, gs_texture_t, "bg_elements" );
+		gs_texture_t bg_tex = asset_manager_get( g_ctx.am, gs_texture_t, "textures.bg_elements" );
 		f32 w = (f32)bg_tex.width;
 		f32 h = (f32)bg_tex.height;
 
@@ -504,6 +424,8 @@ void imgui_render()
 void debug_ui()
 {
 	gs_platform_i* platform = gs_engine_instance()->ctx.platform;
+	gs_audio_i* audio = gs_engine_instance()->ctx.audio;
+
 	gs_vec2 ws = platform->window_size( platform->main_window() );
 
 	ImDrawList* dl = ImGui::GetBackgroundDrawList();
@@ -593,8 +515,8 @@ void debug_ui()
 		    {
 		    	ImGui::Text( "grounded: %s", player_is_grounded(&g_ctx.player) ? "true" : "false" );
 		    	ImGui::Text( "moving: %s", player_is_moving(&g_ctx.player) ? "true" : "false" );
-		    	ImGui::Text( "state: %s", player_state_to_string(&g_ctx.player) );
-		    	ImGui::Text( "frame: %d", g_ctx.player.animations[g_ctx.player.state].current_frame);
+		    	ImGui::Text( "state: %s", player_state_to_string(g_ctx.player.state) );
+		    	ImGui::Text( "frame: %d", g_ctx.player.animation_comp.current_frame);
 			    if (ImGui::CollapsingHeader("transform", NULL) )
 			    {
 			    	ImGui::SliderFloat("x", &g_ctx.player.transform.position.x, 0.f, 1000.f );
@@ -627,6 +549,17 @@ void debug_ui()
 				    	ImGui::SliderFloat("z", &xform->transform.position.z, 0.f, 1000.f );
 				    }
 		    	}
+		    }
+
+		    // Game Context
+		    if ( ImGui::CollapsingHeader("game_context", NULL))
+		    {
+		    	// Grab instance data, maniuplate, reset instance data	
+				f32 vol = audio->get_volume( g_ctx.bg_music );
+				if ( ImGui::SliderFloat("volume", &vol, 0.f, 1.f ) )
+				{
+					audio->set_volume( g_ctx.bg_music, vol );
+				}
 		    }
 		}
 		ImGui::End();

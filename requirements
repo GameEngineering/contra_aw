@@ -1,12 +1,12 @@
 Contra 3 1st Level Requirements: 
 
-- Finish player animations/states
-- Player movement
+- Finish player animations/states (x)
+- Player movement (x)
 - Scene/Level construction and serialization
 - Simple level editor
 - Enemies
-- Entity/Component system? Nah...
-- Player controller
+- Entity/Component system? Nah... (x)
+- Player controller (x)
 
-- render into backbuffer
-- bounding area for player drawn (debug view)
+- render into backbuffer (x)
+- bounding area for player drawn (debug view) (x)

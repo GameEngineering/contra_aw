@@ -758,7 +758,7 @@ gs_quat gs_quat_default()
 	q.x = 0.f;	
 	q.y = 0.f;	
 	q.z = 0.f;	
-	q.w = 0.f;	
+	q.w = 1.f;	
 	return q;
 }
 

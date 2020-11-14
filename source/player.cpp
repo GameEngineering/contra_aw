@@ -78,6 +78,26 @@ gs_vec2 player_get_bullet_offset( player_t* player )
 	}
 }
 
+f32 player_get_animation_height_offset( player_t* player )
+{
+	switch ( player->state )
+	{
+		case player_state(running, gun_up, not_firing): 		return -5.f; break;
+		case player_state(idle, gun_up, not_firing): 			return -28.f; break;
+		default: 												return 0.f; break;	
+	}
+}
+
+f32 player_get_animation_aabb_scale( player_t* player )
+{
+	switch ( player->state )
+	{
+		case player_state(idle_prone, gun_forward, not_firing): return 18.f; break;
+		case player_state(jumping, null, null): 				return 15.f; break;
+		default: 												return 45.f; break;	
+	}
+}
+
 void player_update_aabb( player_t* player )
 {
 	f32 t = gs_engine_instance()->ctx.platform->elapsed_time();
@@ -87,14 +107,16 @@ void player_update_aabb( player_t* player )
 	sprite_frame_t* s = &anim->frames[ac->current_frame];
 	gs_vec4 uvs = s->uvs;
 
+	// Depending on the state, need to get certain "offsets" for the player's aabb
+
 	// Width and height of UVs to scale the quads
 	f32 tw = fabsf(uvs.z - uvs.x);
-	f32 th = fabsf(uvs.w - uvs.y);
+	f32 th = fabsf(uvs.w - uvs.y + player_get_animation_height_offset(player));
 
 	// Player's transform
 	gs_vqs xform = gs_vqs_default();
 	xform.position = player->transform.position;
-	xform.scale = gs_vec3_scale(v3(tw, th, 1.f), gs_vec3_len(player->transform.scale));
+	xform.scale = gs_vec3_scale(v3(tw, player_get_animation_aabb_scale(player), 1.f), gs_vec3_len(player->transform.scale));
 	xform.scale.z = 1.f;
 
 	// Define the object space quad for our player
@@ -152,22 +174,16 @@ void player_update( player_t* player, game_context_t* ctx )
 		player_set_state( *player, jumping, null, null );
 	}
 
-	if (player->state != player_state(jumping, null, null) && gs_vec2_len(player->velocity) == 0.f)
-	{
-		player_set_state( *player, idle, gun_forward, not_firing );
-	}
+	// if (player->state != player_state(jumping, null, null) && gs_vec2_len(player->velocity) == 0.f)
+	// {
+	// 	player_set_state( *player, idle, gun_forward, not_firing );
+	// }
 
 	// Add gravity to player's velocity
 	player->velocity.y -= 0.015f;
 
 	// Move player based on normalized direction
 	player->transform.position = gs_vec3_add(player->transform.position, v3(player->velocity.x, player->velocity.y, 0.f));
-
-	if ( player->transform.position.y <= 0.5f )
-	{
-		player->transform.position.y = 0.5f;
-		player->velocity.y = 0.f;
-	}
 
 	/*=============
 	// AABB Update
@@ -178,6 +194,25 @@ void player_update( player_t* player, game_context_t* ctx )
 	/*=============
 	// Collisions
 	=============*/
+
+	// Check with floor
+	aabb_t ground = gs_default_val();
+	ground.min = v2(player->aabb.min.x - 100.f, -10.f);
+	ground.max = v2(player->aabb.min.x + 100.f, 0.f);
+	if ( aabb_vs_aabb( &player->aabb, &ground ) )
+	{
+		// Get mvt then move player by mtv	
+		gs_vec2 mtv = aabb_aabb_mtv( &player->aabb, &ground );
+		gs_println( "mtv: %.2f, %.2f", mtv.x, mtv.y);
+		player->transform.position = gs_vec3_add( player->transform.position, v3(mtv.x, mtv.y, 0.f) );
+
+		if ( mtv.y != 0.f ) {
+			player->velocity.y = 0.f;
+		}
+
+		// Reupdate aabb
+		player_update_aabb( player );
+	}
 
 	// Check against world
 	gs_for_range_i( gs_dyn_array_size( ctx->collision_objects ) )
@@ -205,12 +240,12 @@ void player_update( player_t* player, game_context_t* ctx )
 			if ( platform->key_down( gs_keycode_s ) )
 			{
 				player_set_state( *player, idle_prone, gun_forward, not_firing );
-				player->transform.position.y -= 0.3f;
 			}
 			else if ( platform->key_down( gs_keycode_w ) )
 			{
 				player_set_state( *player, idle, gun_up, not_firing );
 			}
+			
 			else 
 			{
 				player_set_state( *player, idle, gun_forward, not_firing );

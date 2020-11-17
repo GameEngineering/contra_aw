@@ -76,7 +76,7 @@ gs_result app_update()
 	gs_platform_i* platform = engine->ctx.platform;
 	gs_graphics_i* gfx = engine->ctx.graphics;
 	gs_command_buffer_t* cb = &g_ctx.cb;
-	gs_quad_batch_t* qb = &g_ctx.player_batch;
+	gs_quad_batch_t* qb = &g_ctx.foreground_batch;
 
 	// If we press the escape key, exit the application
 	if ( platform->key_pressed( gs_keycode_esc ) )
@@ -314,9 +314,49 @@ gs_result app_update()
 			quad_info.color = v4(1.f, 1.f, 1.f, 1.f);
 			gfx->quad_batch_add( qb, &quad_info );
 		}
-
 	} 
-	gfx->quad_batch_end( qb );
+	gfx->quad_batch_end(qb);
+
+	qb = &g_ctx.enemy_batch;
+	gfx->quad_batch_begin(qb);
+	{
+		// Draw enemies
+		entity_group(red_guy_t*) red_guys = &g_ctx.entities.red_guys;
+		gs_for_range_i(gs_dyn_array_size(red_guys->entities))
+		{
+			u32 id = red_guys->entities[i];
+			transform_component_t* xform = &gs_slot_array_get(red_guys->transforms, id);					
+			sprite_animation_component_t* ac = &gs_slot_array_get(red_guys->animations, id);
+			sprite_frame_animation_asset_t* anim = ac->animation;
+			sprite_frame_t* sprite = &anim->frames[ac->current_frame];
+
+			// Draw single quad for background batch for now	
+			gs_vec4 uv = sprite->uvs;
+			f32 w = sprite->texture.width;
+			f32 h = sprite->texture.height;
+
+			// Need UV information for tile in texture
+			f32 l = uv.x / w;
+			f32 t = 1.f - (uv.y / h);
+			f32 r = uv.z / w;
+			f32 b = 1.f - (uv.w / h);
+
+			// Width and height of UVs to scale the quads
+			f32 tw = fabsf(uv.z - uv.x);
+			f32 th = fabsf(uv.w - uv.y);
+
+			gs_vec3 cam_origin = g_ctx.camera.transform.position;
+
+			gs_default_quad_info_t quad_info = {0};
+			quad_info.transform = gs_vqs_default();
+			quad_info.transform.scale = gs_vec3_scale(v3(tw, th, 1.f), scale_factor);
+			quad_info.transform.position = xform->transform.position;
+			quad_info.uv = v4(l, b, r, t);
+			quad_info.color = v4(1.f, 1.f, 1.f, 1.f);
+			gfx->quad_batch_add(qb, &quad_info);
+		}
+	}
+	gfx->quad_batch_end(qb);
 
 	/*===============
 	// Render scene
@@ -353,7 +393,16 @@ gs_result app_update()
 		gfx->quad_batch_submit( cb, qb );
 
 		// Draw player
-		qb = &g_ctx.player_batch;
+		qb = &g_ctx.foreground_batch;
+		gfx->set_material_uniform_mat4( qb->material, "u_model", model_mtx );
+		gfx->set_material_uniform_mat4( qb->material, "u_view", view_mtx );
+		gfx->set_material_uniform_mat4( qb->material, "u_proj", proj_mtx );
+
+		// Need to submit quad batch
+		gfx->quad_batch_submit( cb, qb );
+
+		// Draw enemies
+		qb = &g_ctx.enemy_batch;
 		gfx->set_material_uniform_mat4( qb->material, "u_model", model_mtx );
 		gfx->set_material_uniform_mat4( qb->material, "u_view", view_mtx );
 		gfx->set_material_uniform_mat4( qb->material, "u_proj", proj_mtx );
@@ -472,6 +521,23 @@ void debug_ui()
 				ImColor(1.f, 1.f, 1.f, 1.f),
 				1.f );
 		}
+
+		entity_group(red_guy_t)* enemies = &g_ctx.entities.red_guys;
+		gs_for_range_i( gs_dyn_array_size( enemies->entities ) )
+		{
+			u32 id = enemies->entities[i];
+			rigid_body_component_t* rbc = gs_slot_array_get_ptr( enemies->rigid_bodies, id );
+
+			// Get window coordinates of generic aabb_t
+			cb = aabb_window_coords( &rbc->aabb, &g_ctx.camera );
+
+			// Draw bounding rect around object
+			dl->AddRect(
+				ImVec2(cb.x, cb.w),
+				ImVec2(cb.z, cb.y),
+				ImColor(1.f, 1.f, 1.f, 1.f),
+				1.f );
+		}
 		
 		// Draw bounding rect around player
 		dl->AddRect(
@@ -551,6 +617,13 @@ void debug_ui()
 		    	}
 		    }
 
+		    // Enemies
+		    if ( ImGui::CollapsingHeader("enemies", NULL))
+		    {
+		    	entity_group(red_guy_t)* enemies = &g_ctx.entities.red_guys;
+		    	ImGui::Text("amount: %zu", gs_dyn_array_size(enemies->entities));
+		    }
+
 		    // Game Context
 		    if ( ImGui::CollapsingHeader("game_context", NULL))
 		    {
@@ -564,8 +637,6 @@ void debug_ui()
 		}
 		ImGui::End();
 	}
-
-	
 }
 
 void camera_update()
@@ -592,24 +663,29 @@ void camera_update()
 	// xform->position.y = gs_interp_linear(xform->position.y, g_ctx.player.transform.position.y + offset.y, 0.05f);
 }
 
-
-entity_group_update_decl( bullet_t,
+entity_group_update_decl(bullet_t,
 {
 	gs_platform_i* platform = gs_engine_instance()->ctx.platform;
 
-	entity_group( bullet_t )* bullets = _group;
+	entity_group(bullet_t)* group = _group;
+
+	sprite_component_t* sc 		= group->sprites.data;
+	rigid_body_component_t* rc 	= group->rigid_bodies.data;
+	transform_component_t* tc 	= group->transforms.data;
 
 	u32 handle_idx = 0;
 	u32 handles_to_destroy[1024];
 	memset(handles_to_destroy, 0, 1024 * sizeof(u32));
 
-	// Move bullets and then collide
-	gs_for_range_i( gs_dyn_array_size( bullets->entities ) )
+	system_update(sprite_aabb)(rc, sc, tc, gs_slot_array_size(group->sprites));
+
+	// Move group and then collide
+	gs_for_range_i( gs_dyn_array_size( group->entities ) )
 	{
 		b32 collided = false;
-		transform_component_t* xform = gs_slot_array_get_ptr( bullets->transforms, bullets->entities[i] );
-		rigid_body_component_t* rbody= gs_slot_array_get_ptr( bullets->rigid_bodies, bullets->entities[i] );
-		sprite_component_t* sprite = gs_slot_array_get_ptr( bullets->sprites, bullets->entities[i]);
+		transform_component_t* xform = gs_slot_array_get_ptr( group->transforms, group->entities[i] );
+		rigid_body_component_t* rbody= gs_slot_array_get_ptr( group->rigid_bodies, group->entities[i] );
+		sprite_component_t* sprite = gs_slot_array_get_ptr( group->sprites, group->entities[i]);
 
 		// Move xform by velocity of rbody
 		gs_vec3 vel = gs_vec3_scale(gs_vec3_norm(v3(rbody->velocity.x, rbody->velocity.y, 0.f)), 0.1f);
@@ -651,6 +727,22 @@ entity_group_update_decl( bullet_t,
 			}
 		}
 
+		// Do collisions against enemies
+		gs_for_range_j(gs_dyn_array_size(g_ctx.entities.red_guys.entities))
+		{
+			u32 eid = g_ctx.entities.red_guys.entities[j];
+			rigid_body_component_t* rbc = gs_slot_array_get_ptr(g_ctx.entities.red_guys.rigid_bodies, eid);
+			if (aabb_vs_aabb(&rbc->aabb, &rbody->aabb))
+			{
+				collided = true;	
+
+				// Delete this entity
+				entity_group_remove(red_guy_t, &g_ctx.entities.red_guys, eid);
+
+				break;
+			}
+		}
+
 		// If collision occurs
 		if ( rbody->aabb.min.y < ground_level || rbody->aabb.max.y < ground_level )
 		{
@@ -679,7 +771,7 @@ entity_group_update_decl( bullet_t,
 		// Set handle to destroy
 		if ( collided )
 		{
-			handles_to_destroy[handle_idx++] = bullets->entities[i];
+			handles_to_destroy[handle_idx++] = group->entities[i];
 		}
 	}
 
@@ -687,24 +779,24 @@ entity_group_update_decl( bullet_t,
 	gs_for_range_i( handle_idx )
 	{
 		u32 id = handles_to_destroy[i];		
-		entity_group_remove( bullet_t, bullets, id );
+		entity_group_remove( bullet_t, group, id );
 	}
 });
 
 entity_group_init_decl( bullet_t,
 {
 	// Cache pointer to entity group
-	entity_group( bullet_t )* bullets = _group;
-	bullets->_base = entity_group_default();
-	bullets->entities = gs_dyn_array_new( u32 );
-	bullets->transforms = gs_slot_array_new( transform_component_t );
-	bullets->sprites = gs_slot_array_new( sprite_component_t );
-	bullets->rigid_bodies = gs_slot_array_new( rigid_body_component_t );
+	entity_group(bullet_t)* group = _group;
+	group->_base = entity_group_default();
+	group->entities = gs_dyn_array_new( u32 );
+	group->transforms = gs_slot_array_new( transform_component_t );
+	group->sprites = gs_slot_array_new( sprite_component_t );
+	group->rigid_bodies = gs_slot_array_new( rigid_body_component_t );
 });
 
-entity_group_add_decl( bullet_t,
+entity_group_add_decl(bullet_t,
 {
-	entity_group( bullet_t )* bullets = _group;
+	entity_group(bullet_t)*group = _group;
 	bullet_data* data = (bullet_data*)_entity_data;
 
 	u32 handle = gs_slot_array_invalid_handle;
@@ -722,11 +814,10 @@ entity_group_add_decl( bullet_t,
 	rigid_body.velocity = data->velocity;
 
 	// Insert component information (create entity)
-	gs_slot_array_insert( bullets->transforms, xform );
-	gs_slot_array_insert( bullets->sprites, sprite );
-	handle = gs_slot_array_insert( bullets->rigid_bodies, rigid_body );
-
-	gs_dyn_array_push( bullets->entities, handle );
+	gs_slot_array_insert(group->transforms, xform);
+	gs_slot_array_insert(group->sprites, sprite);
+	handle = gs_slot_array_insert(group->rigid_bodies, rigid_body);
+	gs_dyn_array_push(group->entities, handle);
 
 	return handle;
 });
@@ -770,6 +861,130 @@ entity_group_shutdown_decl( bullet_t,
 	gs_slot_array_free( bullets->sprites );
 	gs_slot_array_free( bullets->rigid_bodies );
 });
+
+entity_group_init_decl( red_guy_t,
+{
+	// Cache pointer to entity group
+	entity_group( red_guy_t )* group = _group;
+	group->_base = entity_group_default();
+	group->entities = gs_dyn_array_new( u32 );
+	group->transforms = gs_slot_array_new( transform_component_t );
+	group->animations = gs_slot_array_new( sprite_animation_component_t );
+	group->rigid_bodies = gs_slot_array_new( rigid_body_component_t );
+});
+
+entity_group_update_decl(red_guy_t, 
+{
+	entity_group( red_guy_t )* group = _group;
+
+	sprite_animation_component_t* sc = group->animations.data;
+	rigid_body_component_t* rc = group->rigid_bodies.data;
+	transform_component_t* tc = group->transforms.data;
+
+	// Update all animations
+	component_update(sprite_animation_component_t)(sc, gs_slot_array_size(group->animations), false);
+	system_update(sprite_anim_aabb)(rc, sc, tc, gs_slot_array_size(group->animations));
+
+	gs_for_range_i( gs_dyn_array_size( group->entities ) )
+	{
+		// Entity id
+		u32 id = group->entities[i];
+		tc = gs_slot_array_get_ptr(group->transforms, id);
+		rc = gs_slot_array_get_ptr(group->rigid_bodies, id);
+		sc = gs_slot_array_get_ptr(group->animations, id);
+
+		/*=============
+		// Collisions
+		=============*/
+
+		// Default collision response against other AABBs
+
+		// Check with floor
+		aabb_t ground = gs_default_val();
+		ground.min = v2(rc->aabb.min.x - 100.f, -10.f);
+		ground.max = v2(rc->aabb.min.x + 100.f, 0.f);
+		if (aabb_vs_aabb(&rc->aabb, &ground))
+		{
+			// Get mvt then move player by mtv	
+			gs_vec2 mtv = aabb_aabb_mtv(&rc->aabb, &ground);
+			tc->transform.position = gs_vec3_add(tc->transform.position, v3(mtv.x, mtv.y, 0.f));
+		}
+
+		// Check against world
+		gs_for_range_i(gs_dyn_array_size(g_ctx.collision_objects ))
+		{
+			if (aabb_vs_aabb(&rc->aabb, &g_ctx.collision_objects[i]))
+			{
+				// Get mvt then move player by mtv	
+				gs_vec2 mtv = aabb_aabb_mtv(&rc->aabb, &g_ctx.collision_objects[i]);
+				tc->transform.position = gs_vec3_add(tc->transform.position, v3(mtv.x, mtv.y, 0.f));
+			}
+		}
+	}
+});
+
+entity_group_add_decl( red_guy_t,
+{
+	entity_group( red_guy_t )* group = _group;
+	red_guy_data* data = (red_guy_data*)_entity_data;
+
+	u32 handle = gs_slot_array_invalid_handle;
+
+	// Transform component
+	transform_component_t xform = gs_default_val();	
+	xform.transform.position = data->position;
+
+	// Sprite component  
+	sprite_animation_component_t anim_comp = gs_default_val();
+
+	// Animation Component
+	anim_comp.animation = asset_manager_get( g_ctx.am, sprite_frame_animation_asset_t, "red_guy_running" ); 
+
+	// Rigid body component
+	rigid_body_component_t rigid_body = gs_default_val();
+
+	// Insert component information (create entity)
+	gs_slot_array_insert( group->transforms, xform );
+	gs_slot_array_insert( group->animations, anim_comp );
+	handle = gs_slot_array_insert( group->rigid_bodies, rigid_body );
+	gs_dyn_array_push( group->entities, handle );
+
+	return handle;
+});
+
+entity_group_remove_decl( red_guy_t,
+{
+	entity_group(red_guy_t)* group = _group;
+
+	// Remove id
+	gs_slot_array_erase(group->transforms, _id);
+	gs_slot_array_erase(group->animations, _id);
+	gs_slot_array_erase(group->rigid_bodies, _id);
+
+	// Need to remove the id from the array of handles
+	// Iterate through handles, find idx of id, swap and pop with back
+	u32 idx = u32_max;
+	gs_for_range_i(gs_dyn_array_size(group->entities))
+	{
+		if (group->entities[i] == _id)
+		{
+			idx = i;
+			break;
+		}	
+	}
+
+	if (idx != u32_max)
+	{
+		// Swap and pop
+		group->entities[idx] = gs_dyn_array_back(group->entities);
+		gs_dyn_array_pop(group->entities);
+	}
+});
+
+entity_group_shutdown_decl( red_guy_t,
+{
+});
+
 
 
 

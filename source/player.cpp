@@ -33,7 +33,7 @@ void player_init( player_t* player, asset_manager_t* am )
 {
 	player->speed = 0.05f;
 	player->transform = gs_vqs_default();
-	player->transform.scale = gs_vec3_scale(v3(1.f, 1.f, 1.f), 1.f / 68.f );
+	player->transform.scale = gs_vec3_scale(v3(1.f, 1.f, 1.f), player_scale_factor );
 	player->transform.position = v3(0.f, 0.5f, 0.f);
 	player->velocity = v2(0.f, 0.f);
 
@@ -43,7 +43,7 @@ void player_init( player_t* player, asset_manager_t* am )
 	sprite_frame_animation_t* anim = NULL;
 
 	// Animation Component
-	player->animation_comp.animation = asset_manager_get( *am, sprite_frame_animation_asset_t, player_state_to_string(player->state) ); 
+	player->animation_comp.animation = asset_manager_get(*am, sprite_frame_animation_asset_t, player_state_to_string(player->state)); 
 }
 
 gs_vec2 player_get_bullet_velocity( player_t* player )
@@ -106,8 +106,6 @@ void player_update_aabb( player_t* player )
 	u32 anim_frame_count = gs_dyn_array_size( anim->frames );
 	sprite_frame_t* s = &anim->frames[ac->current_frame];
 	gs_vec4 uvs = s->uvs;
-
-	// Depending on the state, need to get certain "offsets" for the player's aabb
 
 	// Width and height of UVs to scale the quads
 	f32 tw = fabsf(uvs.z - uvs.x);
@@ -174,11 +172,6 @@ void player_update( player_t* player, game_context_t* ctx )
 		player_set_state( *player, jumping, null, null );
 	}
 
-	// if (player->state != player_state(jumping, null, null) && gs_vec2_len(player->velocity) == 0.f)
-	// {
-	// 	player_set_state( *player, idle, gun_forward, not_firing );
-	// }
-
 	// Add gravity to player's velocity
 	player->velocity.y -= 0.015f;
 
@@ -203,7 +196,6 @@ void player_update( player_t* player, game_context_t* ctx )
 	{
 		// Get mvt then move player by mtv	
 		gs_vec2 mtv = aabb_aabb_mtv( &player->aabb, &ground );
-		gs_println( "mtv: %.2f, %.2f", mtv.x, mtv.y);
 		player->transform.position = gs_vec3_add( player->transform.position, v3(mtv.x, mtv.y, 0.f) );
 
 		if ( mtv.y != 0.f ) {
@@ -273,7 +265,7 @@ void player_update( player_t* player, game_context_t* ctx )
 		static f32 _t = 0.f;	
 		_t += 0.1f;
 		b32 fire = false;
-		f32 rate_of_fire = 0.25f;
+		f32 rate_of_fire = 0.3f;
 
 		if ( _t > rate_of_fire || !firing )
 		{
@@ -296,27 +288,14 @@ void player_update( player_t* player, game_context_t* ctx )
 		}
 	}
 
-	if ( platform->mouse_released( gs_mouse_lbutton ) )
+	if (platform->mouse_released(gs_mouse_lbutton))
 	{
 		firing = false;
 	}
 
 	// Set animation based on player state
-	player->animation_comp.animation = asset_manager_get( ctx->am, sprite_frame_animation_asset_t, player_state_to_string(player->state) );
+	player->animation_comp.animation = asset_manager_get(ctx->am, sprite_frame_animation_asset_t, player_state_to_string(player->state));
 
 	// Tick animation based on state
-	static s32 cur_frame = 0;
-	static f32 _t = 0.f;
-	sprite_animation_component_t* ac = &player->animation_comp;
-	sprite_frame_animation_asset_t* anim = ac->animation;
-	u32 anim_frame_count = gs_dyn_array_size( anim->frames );
-	_t += ac->animation->speed;
-	if ( _t >= 1.f )
-	{
-		_t = 0.f;
-		cur_frame++;
-	}
-	
-	// Render player animation
-	ac->current_frame = cur_frame % anim_frame_count;
+	component_update(sprite_animation_component_t)(&player->animation_comp, 1, true);
 }

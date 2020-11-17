@@ -26,17 +26,21 @@ void game_context_init( game_context_t* ctx )
 	// Construct frame buffer
 	ctx->fb = gfx->construct_frame_buffer( ctx->rt );
 	// Construct quad batch api and link up function pointers
-	ctx->player_batch = gs_quad_batch_new( NULL );
+	ctx->foreground_batch = gs_quad_batch_new( NULL );
 	ctx->background_batch = gs_quad_batch_new( NULL );
+	ctx->enemy_batch = gs_quad_batch_new( NULL );
 
 	game_context_initialize_assets( ctx );
 
 	// Set material texture uniform
-	gfx->set_material_uniform_sampler2d( ctx->player_batch.material, "u_tex", 
+	gfx->set_material_uniform_sampler2d( ctx->foreground_batch.material, "u_tex", 
 		asset_manager_get( ctx->am, gs_texture_t, "textures.contra_player_sprite" ), 0 );
 
 	gfx->set_material_uniform_sampler2d( ctx->background_batch.material, "u_tex", 
 		asset_manager_get( ctx->am, gs_texture_t, "textures.bg_elements" ), 0 );
+
+	gfx->set_material_uniform_sampler2d( ctx->enemy_batch.material, "u_tex", 
+		asset_manager_get( ctx->am, gs_texture_t, "textures.enemies" ), 0 );
 
 	// Construct camera parameters
 	ctx->camera.transform = gs_vqs_default();
@@ -52,21 +56,30 @@ void game_context_init( game_context_t* ctx )
 
 	// Initialize bullet group
 	entity_group_init( bullet_t, &ctx->entities.bullets );
+	entity_group_init( red_guy_t, &ctx->entities.red_guys );
 
 	// Init aabb collision struct
 	ctx->collision_objects = gs_dyn_array_new( aabb_t );
+	// gs_for_range_i( 100 )
+	// {
+	// 	aabb_t aabb = gs_default_val();
+	// 	aabb.min = v2((f32)i * 5.f, 0.f);
+	// 	aabb.max = gs_vec2_add(aabb.min, v2(1.f, 1.f));
+	// 	gs_dyn_array_push( ctx->collision_objects, aabb );
+	// }
+
+	// Add a new red guy for testing
 	gs_for_range_i( 100 )
 	{
-		aabb_t aabb = gs_default_val();
-		aabb.min = v2((f32)i * 5.f, 0.f);
-		aabb.max = gs_vec2_add(aabb.min, v2(1.f, 1.f));
-		gs_dyn_array_push( ctx->collision_objects, aabb );
+		red_guy_data rgd = gs_default_val();
+		rgd.position = v3((f32)i * 2.f, 0.f, 0.f);
+		entity_group_add( red_guy_t, &ctx->entities.red_guys, &rgd );
 	}
 
 	// Construct instance source and play on loop. Forever.
 	// Fill out instance data to pass into audio subsystem
 	gs_audio_instance_data_t inst = gs_audio_instance_data_new( asset_manager_get( ctx->am, gs_audio_source_t, "audio.level_1_bg" ) );
-	inst.volume = 0.1f;						// Range from [0.f, 1.f]
+	inst.volume = 0.0f;						// Range from [0.f, 1.f]
 	inst.loop = true;						// Tell whether or not audio should loop 
 	inst.persistent = true;					// Whether or not instance should stick in memory after completing, if not then will be cleared from memory
 	ctx->bg_music = audio->construct_instance( inst );
@@ -97,7 +110,8 @@ void game_context_initialize_assets( game_context_t* ctx )
 	const char* texture_files[] = 
 	{
 		"textures/contra_player_sprite.png",
-		"textures/bg_elements.png"
+		"textures/bg_elements.png",
+		"textures/enemies.png"
 	};
 
 	gs_for_range_i( sizeof(texture_files) / sizeof(const char*) )
@@ -107,9 +121,6 @@ void game_context_initialize_assets( game_context_t* ctx )
 		gs_snprintf(tmp, 256, "./assets/%s", texture_files[i]);
 		asset_manager_load( ctx->am, gs_texture_t, tmp, desc );
 	}
-
-	// Load atlas textures into asset manager
-	asset_manager_load( ctx->am, gs_texture_t, "./assets/textures/bg_elements.png", desc );
 
 	// All required audio files
 	const char* audio_files[] = 
@@ -198,9 +209,23 @@ void game_context_initialize_assets( game_context_t* ctx )
 		sprite_frame_t_new( tex, v4(59.f, 49.f, 82.f, 72.f) ),
 		sprite_frame_t_new( tex, v4(93.f, 49.f, 112.f, 72.f) )
 	);
+
+	tex = asset_manager_get( ctx->am, gs_texture_t, "textures.enemies" );
+
+	/* Reg Guy: Running */
+	__asset_manager_load_sprite_anim(
+		"red_guy_running",
+		0.1f,
+		sprite_frame_t_new( tex, v4(379.f, 8.f, 401.f, 47.f) ),
+		sprite_frame_t_new( tex, v4(405.f, 8.f, 427.f, 47.f) ),
+		sprite_frame_t_new( tex, v4(433.f, 9.f, 466.f, 47.f) ),
+		sprite_frame_t_new( tex, v4(472.f, 8.f, 498.f, 47.f) ),
+		sprite_frame_t_new( tex, v4(506.f, 9.f, 537.f, 47.f) )
+	);
 }
 
 void game_context_update( game_context_t* ctx )
 {
-	entity_group_update( bullet_t, &ctx->entities.bullets );	
+	entity_group_update(bullet_t, &ctx->entities.bullets);	
+	entity_group_update(red_guy_t, &ctx->entities.red_guys);	
 }

@@ -46,7 +46,6 @@ typedef struct player_t
 #define player_set_state( player, lower, upper, gun )\
 do {\
 	(player).state = player_state( lower, upper, gun );\
-	(player).animation_comp.current_frame = 0;\
 } while (0)
 
 
